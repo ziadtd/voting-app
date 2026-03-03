@@ -1,0 +1,15 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed
+spec:
+  template:
+    spec:
+      containers:
+        - name: seed
+          image: 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/seed:latest
+          env:
+            - name: VOTE_URL
+              value: http://vote
+      restartPolicy: Never
+  backoffLimit: 2
