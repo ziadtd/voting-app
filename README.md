@@ -1,123 +1,386 @@
-# Voting Application - DevOps Challenge
+# Voting App
 
-## Project Overview
+A distributed voting application containerized with Docker and orchestrated using Docker Compose with two-tier networking, health checks, and a multi-service backend.
 
-This is a distributed voting application that allows users to vote between two options and view real-time results. The application consists of multiple microservices that work together to provide a complete voting experience.
+---
 
-## Application Architecture
+## Author
 
-The voting application consists of the following components:
+**Zeyad Elgohari** — Cloud & DevOps Engineer
 
-![Architecture Diagram](./architecture.excalidraw.png)
+- GitHub: [github.com/ziadtd](https://github.com/ziadtd)
+- LinkedIn: [linkedin.com/in/ziadtd](https://linkedin.com/in/ziadtd)
+- Email: ziadtareqd22@gmail.com
 
-### Frontend Services
-- **Vote Service** (`/vote`): Python Flask web application that provides the voting interface
-- **Result Service** (`/result`): Node.js web application that displays real-time voting results
+---
 
-### Backend Services  
-- **Worker Service** (`/worker`): .NET worker application that processes votes from the queue
-- **Redis**: Message broker that queues votes for processing
-- **PostgreSQL**: Database that stores the final vote counts
+## Stage 1: Local Containerization
+
+```
+                    ┌─────────────────────────────┐
+                    │       Frontend Network      │
+                    │                             │
+                    │  ┌──────────┐  ┌──────────┐ │
+                    │  │  Vote    │  │  Result  │ │
+                    │  │          │  │          │ │
+                    │  └────┬─────┘  └────┬─────┘ │
+                    └───────┼─────────────┼───────┘
+                            │             │
+                    ┌───────┼─────────────┼─────────┐
+                    │       │  Backend Network      │
+                    │       ▼             ▼         │
+                    │  ┌─────────┐  ┌──────────┐    │
+                    │  │  Redis  │  │ Postgres │    │
+                    │  └────┬────┘  └────┬─────┘    │
+                    │       │            │          │
+                    │       └────┬───────┘          │
+                    │            ▼                  │
+                    │       ┌─────────┐             │
+                    │       │ Worker  │             │
+                    │       └─────────┘             │
+                    └───────────────────────────────┘
+```
+
+### Services
+
+| Service | Language              | Port | Role                                           |
+| ------- | --------------------- | ---- | ---------------------------------------------- |
+| vote    | Python / Flask        | 8080 | Voting UI — sends votes to Redis               |
+| result  | Node.js               | 8081 | Results UI — reads from Postgres via WebSocket |
+| worker  | .NET                  | —    | Processes votes from Redis → Postgres          |
+| redis   | Redis 7               | 6379 | Message queue (internal only)                  |
+| db      | PostgreSQL 15         | 5432 | Vote storage (internal only)                   |
+| seed    | Python + Apache Bench | —    | Populates test data (optional)                 |
 
 ### Data Flow
-1. Users visit the vote service to cast their votes
-2. Votes are sent to Redis queue
-3. Worker service processes votes from Redis and stores them in PostgreSQL
-4. Result service queries PostgreSQL and displays real-time results via WebSocket
 
-### Network Architecture
-The application should use a **two-tier network architecture** for security and organization:
+1. User visits **vote** service and casts a vote
+2. Vote is pushed to **Redis** queue
+3. **Worker** reads from Redis and writes to **PostgreSQL**
+4. **Result** service queries Postgres and displays live results via WebSocket
 
-- **Frontend Tier Network**: 
-  - Vote service (port 8080)
-  - Result service (port 8081)
-  - Accessible from outside the Docker environment
+---
 
-- **Backend Tier Network**:
-  - Worker service
-  - Redis
-  - PostgreSQL
-  - Internal communication only
+### Steps:
 
-This separation ensures that database and message queue services are not directly accessible from outside, while the web services remain accessible to users.
+### 1. Write the Dockerfiles:
 
-## Your Task
+[Vote](/vote/Dockerfile)
+[Result](/result/Dockerfile)
+[Worker](/worker/Dockerfile)
+Optional: [Seed](/seed-data/Dockerfile)
 
-As a DevOps engineer, your task is to containerize this application and create the necessary infrastructure files. You need to create:
+### 2. Write the Compose Yaml manifest:
 
-### 1. Docker Files
-Create `Dockerfile` for each service:
-- `vote/Dockerfile` - for the Python Flask application
-- `result/Dockerfile` - for the Node.js application  
-- `worker/Dockerfile` - for the .NET worker application
-- `seed-data/Dockerfile` - for the data seeding utility
+[docker-compose.yml](./docker-compose.yml)
 
-### 2. Docker Compose
-Create `docker-compose.yml` that:
-- Defines all services with proper networking using **two-tier architecture**:
-  - **Frontend tier**: Vote and Result services (user-facing)
-  - **Backend tier**: Worker, Redis, and PostgreSQL (internal services)
-- Sets up health checks for Redis and PostgreSQL
-- Configures proper service dependencies
-- Exposes the vote service on port 8080 and result service on port 8081
-- Uses the provided health check scripts in `/healthchecks` directory
+### 3. Start the application
 
-### 3. Health Checks
-The application includes health check scripts:
-- `healthchecks/redis.sh` - Redis health check
-- `healthchecks/postgres.sh` - PostgreSQL health check
+```bash
+docker compose up --build
+```
 
-Use these scripts in your Docker Compose configuration to ensure services are ready before dependent services start.
+### 4. Access the services
 
-## Requirements
+| Service | URL                   |
+| ------- | --------------------- |
+| Vote    | http://localhost:8080 |
+| Results | http://localhost:8081 |
 
-- All services should be properly networked using **two-tier architecture**:
-  - **Frontend tier network**: Connect Vote and Result services
-  - **Backend tier network**: Connect Worker, Redis, and PostgreSQL
-  - Both tiers should be isolated for security
-- Health checks must be implemented for Redis and PostgreSQL
-- Services should wait for their dependencies to be healthy before starting
-- The vote service should be accessible at `http://localhost:8080`
-- The result service should be accessible at `http://localhost:8081`
-- Use appropriate base images and follow Docker best practices
-- Ensure the application works end-to-end when running `docker compose up`
-- Include a seed service that can populate test data
+### 5. (Optional) Seed test data
 
-## Data Population
+```bash
+docker compose --profile seed up seed
+```
 
-The application includes a seed service (`/seed-data`) that can populate the database with test votes:
+This sends 3000 test votes — 2000 for option A and 1000 for option B using Apache Bench.
 
-- **`make-data.py`**: Creates URL-encoded vote data files (`posta` and `postb`)
-- **`generate-votes.sh`**: Uses Apache Bench (ab) to send 3000 test votes:
-  - 2000 votes for option A
-  - 1000 votes for option B
+---
 
-### How to Use Seed Data
+## Stage 2: Push Images to AWS ECR
 
-1. Include the seed service in your `docker-compose.yml`
-2. Run the seed service after all other services are healthy:
-   ```bash
-   docker compose run --rm seed
-   ```
-3. Or run it as a one-time service with a profile:
-   ```bash
-   docker compose --profile seed up
-   ```
+### Steps:
 
-## Getting Started
+### Step 1: Configure AWS CLI
 
-1. Examine the source code in each service directory
-2. Create the necessary Dockerfiles
-3. Create the docker-compose.yml file with two-tier networking
-4. Test your implementation by running `docker compose up`
-5. Populate test data using the seed service
-6. Verify that you can vote and see results in real-time
+```bash
+aws configure
+```
 
-## Notes
+Enter credentials when prompted:
 
-- The voting application only accepts one vote per client browser
-- The result service uses WebSocket for real-time updates
-- The worker service continuously processes votes from the Redis queue
-- Make sure to handle service startup order properly with health checks
+| Field                 | Value                                  |
+| --------------------- | -------------------------------------- |
+| AWS Access Key ID     | From IAM → User → Security credentials |
+| AWS Secret Access Key | From IAM → User → Security credentials |
+| Default region        | `us-east-1`                            |
+| Default output format | `json`                                 |
 
-Good luck with your challenge! 🚀
+Verify authentication:
+
+```bash
+aws sts get-caller-identity
+```
+
+### Step 2: Create ECR Repositories
+
+Create a repository for each service:
+
+```bash
+aws ecr create-repository --repository-name voting-app/vote --region us-east-1
+aws ecr create-repository --repository-name voting-app/result --region us-east-1
+aws ecr create-repository --repository-name voting-app/worker --region us-east-1
+aws ecr create-repository --repository-name voting-app/seed --region us-east-1
+```
+
+### Step 3: Authenticate Docker with ECR
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  544885083314.dkr.ecr.us-east-1.amazonaws.com
+```
+
+### Step 4: Tag Images
+
+Tag each local image with the full ECR URI:
+
+```bash
+docker tag voting-app-vote:latest 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/vote:latest
+docker tag voting-app-result:latest 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/result:latest
+docker tag voting-app-worker:latest 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/worker:latest
+docker tag voting-app-seed:latest 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/seed:latest
+```
+
+### Step 5: Push Images to ECR
+
+```bash
+docker push 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/vote:latest
+docker push 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/result:latest
+docker push 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/worker:latest
+docker push 544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/seed:latest
+```
+
+ECR Image URIs
+
+| Service | ECR URI                                                                 |
+| ------- | ----------------------------------------------------------------------- |
+| result  | `544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/result:latest` |
+| worker  | `544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/worker:latest` |
+| vote    | `544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/vote:latest`   |
+| seed    | `544885083314.dkr.ecr.us-east-1.amazonaws.com/voting-app/seed:latest`   |
+
+---
+
+## Stage 3: Provision EKS Cluster with Terraform
+
+### Terraform Files
+
+[main.tf](/terraform/main.tf)
+[variables.tf](/terraform/variables.tf)
+[vpc.tf](/terraform/vpc.tf)
+[eks.tf](/terraform/eks.tf)
+[outputs.tf](/terraform/outputs.tf)
+
+### Steps
+
+### Step 1: Initialize Terraform
+
+```bash
+cd terraform
+terraform init
+```
+
+### Step 2: Import existing ECR repositories
+
+```bash
+terraform import aws_ecr_repository.vote voting-app/vote
+terraform import aws_ecr_repository.result voting-app/result
+terraform import aws_ecr_repository.worker voting-app/worker
+terraform import aws_ecr_repository.seed voting-app/seed
+```
+
+### Step 4: Apply
+
+```bash
+terraform apply
+```
+
+### Step 5: Connect kubectl
+
+Once `terraform apply` completes, configure kubectl:
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name voting-app-cluster
+```
+
+Confirm Access
+
+```bash
+kubectl get nodes
+```
+
+## Stage 4: Deploy to EKS with Kubernetes
+
+### Step 1: Install EBS CSI Driver
+
+EKS needs the EBS CSI driver to provision persistent volumes for PostgreSQL.
+
+Create IAM role for EBS CSI driver
+
+```bash
+aws iam create-role \
+  --role-name AmazonEKS_EBS_CSI_DriverRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::544885083314:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/47529B3A57E7E923C46E83CB098D3473"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringEquals": {
+            "oidc.eks.us-east-1.amazonaws.com/id/47529B3A57E7E923C46E83CB098D3473:aud": "sts.amazonaws.com",
+            "oidc.eks.us-east-1.amazonaws.com/id/47529B3A57E7E923C46E83CB098D3473:sub": "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+          }
+        }
+      }
+    ]
+  }'
+
+aws iam attach-role-policy \
+  --role-name AmazonEKS_EBS_CSI_DriverRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+```
+
+Install the addon
+
+```bash
+aws eks create-addon \
+  --cluster-name voting-app-cluster \
+  --addon-name aws-ebs-csi-driver \
+  --service-account-role-arn arn:aws:iam::<account-id>:role/AmazonEKS_EBS_CSI_DriverRole \
+  --region us-east-1
+```
+
+### Step 2: Install AWS Load Balancer Controller
+
+Add Helm repo
+
+```bash
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+```
+
+Create IAM policy
+
+```bash
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+
+aws iam create-policy \
+  --policy-name AWSLoadBalancerControllerIAMPolicy \
+  --policy-document file://iam_policy.json
+```
+
+Create IAM role
+
+```bash
+aws iam create-role \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::<account-id>:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/47529B3A57E7E923C46E83CB098D3473"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringEquals": {
+            "oidc.eks.us-east-1.amazonaws.com/id/47529B3A57E7E923C46E83CB098D3473:aud": "sts.amazonaws.com",
+            "oidc.eks.us-east-1.amazonaws.com/id/47529B3A57E7E923C46E83CB098D3473:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller"
+          }
+        }
+      }
+    ]
+  }'
+
+aws iam attach-role-policy \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --policy-arn arn:aws:iam::544885083314:policy/AWSLoadBalancerControllerIAMPolicy
+```
+
+Create Kubernetes service account
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::544885083314:role/AmazonEKSLoadBalancerControllerRole
+EOF
+```
+
+Install via Helm
+
+```bash
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=voting-app-cluster \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
+```
+
+### Step 3: Kubernetes Manifests
+
+[configmap.yaml](/k8s/configmap.yaml)
+[secret.yaml](/k8s/secret.yaml)
+[postgres-statefulset.yaml](/k8s/postgres-statefulset.yaml)
+[postgres-service.yaml](/k8s/postgres-service.yaml)
+[redis-deployment.yaml](/k8s/redis-deployment.yaml)
+[worker-deployment.yaml](/k8s/worker-deployment.yaml)
+[vote-deployment.yaml](/k8s/vote-deployment.yaml)
+[result-deployment.yaml](/k8s/result-deployment.yaml)
+
+### Step 4: Deploy
+
+```bash
+kubectl apply -f k8s/
+```
+
+### Step 5: Get Public URLs
+
+```bash
+kubectl get svc vote result
+```
+
+| Service | URL                       |
+| ------- | ------------------------- |
+| Vote    | `http://k8s-default-vote-30b2f27878-f442a93df1fa4f87.elb.us-east-1.amazonaws.com/`   |
+| Result  | `http://k8s-default-result-fad4916963-ff6f7c604c87913b.elb.us-east-1.amazonaws.com/` |
+
+
+### Step 6: (Optional) Seed Test Data
+
+The seed service sends 3000 test votes — 2000 for option A and 1000 for option B — using Apache Bench.
+
+[seed-job.yaml](/k8s/seed-job.yaml)
+
+ Run the seed job
+
+```bash
+kubectl apply -f k8s/seed-job.yaml
+```
+
+Clean up after seeding
+
+```bash
+kubectl delete job seed
+```
+
